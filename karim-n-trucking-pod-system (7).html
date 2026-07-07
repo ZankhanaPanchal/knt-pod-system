@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Karim N Trucking LTD — POD System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Barlow:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script>
+  /* ============================================================
+     SETUP — the only thing you need to do:
+     1. Follow SETUP-INSTRUCTIONS.md to create the Google Sheet +
+        Apps Script backend (takes about 10 minutes, one-time).
+     2. Paste the Web App URL you get from that setup below.
+     3. Save this file. That's the entire setup.
+
+     Every submission — details and photos — gets written straight
+     to your Google Sheet, which acts as the live dashboard for
+     dispatch. Share that Sheet only with dispatch to keep it
+     private.
+     ============================================================ */
+  const CONFIG = {
+    SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbwHlnqhGrXmBW0760zfVVsKXzWZvamlv6yxhpPbQGVTUlhJHWD8KA5ku9oCR3CrVlLO/exec'
+  };
+</script>
+<style>
+  :root{
+    --ink:#10233B; --ink-soft:#26374F; --route:#E27431; --route-dark:#C05A1E;
+    --paper:#F6F3ED; --card:#FFFFFF; --slate:#5B6B7F; --line:#E4DFD4; --line-strong:#D8D2C2;
+    --green:#2E8B57; --green-soft:#E7F4EC; --red:#C0392B; --red-soft:#FBEAE8; --amber-soft:#FCEEDF;
+    --shadow:0 1px 2px rgba(16,35,59,.06), 0 8px 24px rgba(16,35,59,.06);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper); color:var(--ink); font-family:'Barlow',sans-serif;
+    min-height:100vh; -webkit-font-smoothing:antialiased;
+    padding-bottom:calc(40px + env(safe-area-inset-bottom));
+  }
+  .mono{font-family:'JetBrains Mono',monospace;}
+
+  header.topbar{
+    background:var(--ink); color:#fff; padding:16px 20px; display:flex; align-items:center;
+    justify-content:space-between; position:sticky; top:0; z-index:50; box-shadow:0 2px 12px rgba(0,0,0,.15);
+  }
+  .brand{display:flex; align-items:center; gap:10px;}
+  .brand-mark{width:34px;height:34px;border-radius:7px;background:var(--route);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .brand-mark svg{width:19px;height:19px;}
+  .brand-text{line-height:1.15;}
+  .brand-text .name{font-size:14px;letter-spacing:.04em;font-weight:800;}
+  .brand-text .tag{font-size:11px;color:#A9BAD2;letter-spacing:.06em;text-transform:uppercase;}
+  .topbar-btn{
+    background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.18); color:#fff;
+    padding:8px 14px; border-radius:7px; font-size:12.5px; font-weight:600; cursor:pointer;
+    letter-spacing:.02em; transition:background .15s;
+  }
+  .topbar-btn:hover{background:rgba(255,255,255,.16);}
+
+  #apiWarning{display:none;background:#C0392B;color:#fff;text-align:center;font-size:12.5px;font-weight:600;padding:10px 14px;line-height:1.5;}
+  #apiWarning code{background:rgba(255,255,255,.2);padding:1px 5px;border-radius:4px;}
+
+  main{max-width:640px;margin:0 auto;padding:22px 16px 0;}
+
+  .intro{margin:6px 4px 16px;}
+  .intro h1{font-size:20px;margin:0 0 4px;font-weight:800;}
+  .intro p{margin:0;color:var(--slate);font-size:14px;line-height:1.5;}
+
+  .mode-tabs{display:flex;gap:8px;margin:0 4px 16px;}
+  .mode-tab{
+    flex:1;text-align:center;padding:11px;border-radius:10px;border:1.5px solid var(--line-strong);
+    background:var(--card);font-weight:700;font-size:13.5px;cursor:pointer;color:var(--slate);transition:all .15s;
+  }
+  .mode-tab.active{background:var(--ink);border-color:var(--ink);color:#fff;}
+
+  .ticket{background:var(--card);border-radius:14px;box-shadow:var(--shadow);position:relative;overflow:hidden;border:1px solid var(--line);}
+  .ticket-strip{position:absolute;left:0;top:0;bottom:0;width:6px;background:repeating-linear-gradient(180deg,var(--route) 0 10px, var(--route-dark) 10px 20px);}
+  .ticket-body{padding:24px 22px 22px 28px;}
+
+  .field{margin-bottom:16px;}
+  .field label{display:block;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--slate);margin-bottom:6px;}
+  .field .req{color:var(--route-dark);}
+  .field input[type=text], .field input[type=date], .field input[type=email], .field textarea{
+    width:100%;border:1.5px solid var(--line-strong);background:#FCFBF8;border-radius:9px;padding:11px 12px;
+    font-size:16px;font-family:'Barlow',sans-serif;color:var(--ink);outline:none;transition:border-color .15s, background .15s;
+  }
+  .field input.mono-field{font-family:'JetBrains Mono',monospace;letter-spacing:.02em;}
+  .field input:focus, .field textarea:focus{border-color:var(--route);background:#fff;}
+  .field textarea{min-height:64px;resize:vertical;}
+  .field .err{color:var(--red);font-size:12px;margin-top:5px;display:none;font-weight:600;}
+  .field.invalid input, .field.invalid textarea{border-color:var(--red);background:var(--red-soft);}
+  .field.invalid .err{display:block;}
+  .hint{font-size:11.5px;color:#8B9AAE;margin-top:5px;}
+
+  .lookup-row{display:flex;gap:10px;}
+  .lookup-row .field{flex:1;margin-bottom:0;}
+  .lookup-btn{background:var(--ink);color:#fff;border:none;border-radius:9px;padding:0 18px;font-weight:700;font-size:13.5px;cursor:pointer;white-space:nowrap;}
+  .lookup-note{font-size:12px;color:var(--slate);margin:10px 4px 0;line-height:1.5;}
+
+  .location-row{display:flex;gap:8px;margin-bottom:8px;align-items:center;}
+  .location-row input{flex:1;border:1.5px solid var(--line-strong);background:#FCFBF8;border-radius:9px;padding:11px 12px;font-size:16px;font-family:'Barlow',sans-serif;color:var(--ink);outline:none;}
+  .location-row input:focus{border-color:var(--route);background:#fff;}
+  .location-row .remove-location{border:none;background:var(--red-soft);color:var(--red);width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:14px;flex-shrink:0;}
+  .add-location-btn{background:none;border:none;color:var(--route-dark);font-size:12.5px;font-weight:700;cursor:pointer;padding:4px 2px;margin-top:2px;}
+  .add-location-btn:hover{text-decoration:underline;}
+
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  @media (max-width:480px){.two-col{grid-template-columns:1fr;}}
+
+  .photo-drop{border:1.5px dashed var(--line-strong);border-radius:10px;background:#FCFBF8;padding:18px;text-align:center;cursor:pointer;transition:all .15s;}
+  .photo-drop:hover{border-color:var(--route);background:var(--amber-soft);}
+  .photo-drop svg{width:26px;height:26px;color:var(--route-dark);margin-bottom:6px;}
+  .photo-drop .ptext{font-size:13.5px;font-weight:600;color:var(--ink-soft);}
+  .photo-drop .psub{font-size:11.5px;color:#8B9AAE;margin-top:2px;}
+  .photo-grid{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px;}
+  .photo-grid:empty{margin-bottom:0;}
+  .photo-tile{position:relative;width:74px;height:74px;flex-shrink:0;}
+  .photo-tile img{width:100%;height:100%;object-fit:cover;border-radius:9px;border:1.5px solid var(--line-strong);}
+  .photo-tile .photo-tile-remove{position:absolute;top:-7px;right:-7px;width:22px;height:22px;border-radius:50%;background:var(--red-soft);color:var(--red);border:2px solid #fff;cursor:pointer;font-size:11px;}
+  .photo-tile .photo-tile-size{position:absolute;bottom:0;left:0;right:0;background:rgba(16,35,59,.68);color:#fff;font-size:8.5px;text-align:center;padding:2px 0;border-radius:0 0 7px 7px;}
+  .photo-tile .photo-tile-tag{position:absolute;top:2px;left:2px;background:var(--route);color:#fff;font-size:8px;font-weight:700;padding:1px 4px;border-radius:4px;}
+
+  .perforation{height:0;border-top:2px dashed var(--line-strong);margin:20px -22px 20px -28px;position:relative;}
+  .perforation::before,.perforation::after{content:'';position:absolute;top:-8px;width:16px;height:16px;border-radius:50%;background:var(--paper);border:1px solid var(--line-strong);}
+  .perforation::before{left:-8px;} .perforation::after{right:-8px;}
+
+  .submit-btn{width:100%;background:var(--route);color:#fff;border:none;padding:14px;font-size:15px;font-weight:700;letter-spacing:.02em;border-radius:10px;cursor:pointer;transition:background .15s, transform .05s;box-shadow:0 4px 14px rgba(226,116,49,.35);}
+  .submit-btn:hover{background:var(--route-dark);}
+  .submit-btn:active{transform:scale(.99);}
+  .submit-btn:disabled{background:#C9BFAF;box-shadow:none;cursor:not-allowed;}
+  .ghost-btn{width:100%;background:none;border:1.5px solid var(--line-strong);color:var(--ink-soft);padding:12px;font-size:13.5px;font-weight:700;border-radius:10px;cursor:pointer;margin-top:10px;}
+  .submit-progress{font-size:12px;color:var(--slate);text-align:center;margin-top:8px;display:none;}
+
+  .recent{margin-top:16px;}
+  .recent-toggle{background:none;border:none;color:var(--slate);font-size:12.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px;padding:6px 4px;}
+  .recent-list{display:none;margin-top:8px;}
+  .recent-list.open{display:block;}
+  .recent-item{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:10px 12px;margin-bottom:7px;font-size:12.5px;display:flex;justify-content:space-between;align-items:center;gap:10px;}
+  .recent-item .rt{font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--route-dark);}
+  .recent-item .rd{color:var(--slate);}
+  .recent-item button{border:none;background:var(--amber-soft);color:var(--route-dark);font-size:11px;font-weight:700;padding:5px 9px;border-radius:6px;cursor:pointer;white-space:nowrap;}
+  .recent-note{font-size:11.5px;color:#8B9AAE;padding:4px 4px 8px;line-height:1.5;}
+
+  .confirm-wrap{display:none;} .confirm-wrap.show{display:block;}
+  .confirm-card{background:var(--card);border-radius:14px;box-shadow:var(--shadow);border:1px solid var(--line);padding:32px 26px;text-align:center;}
+  .stamp{display:inline-block;border:3px solid var(--green);color:var(--green);font-family:'Archivo Black',sans-serif;font-size:15px;letter-spacing:.08em;padding:7px 18px;border-radius:8px;transform:rotate(-6deg);margin-bottom:16px;}
+  .confirm-ticket-no{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;color:var(--ink);margin:4px 0 2px;}
+  .confirm-sub{color:var(--slate);font-size:13.5px;margin-bottom:20px;}
+  .confirm-details{text-align:left;background:#FCFBF8;border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:20px;}
+  .confirm-details div{display:flex;justify-content:space-between;font-size:13px;padding:5px 0;border-bottom:1px solid var(--line);}
+  .confirm-details div:last-child{border-bottom:none;}
+  .confirm-details span:first-child{color:var(--slate);}
+  .confirm-details span:last-child{font-weight:600;text-align:right;max-width:60%;}
+  .again-btn{background:var(--ink);color:#fff;border:none;padding:12px 20px;border-radius:9px;font-weight:700;font-size:14px;cursor:pointer;}
+
+  .toast-host{position:fixed;bottom:calc(18px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center;width:100%;padding:0 16px;}
+  .toast{background:var(--ink);color:#fff;padding:11px 18px;border-radius:9px;font-size:13.5px;font-weight:600;box-shadow:0 6px 20px rgba(0,0,0,.25);opacity:0;transform:translateY(10px);transition:all .2s;max-width:88vw;text-align:center;}
+  .toast.show{opacity:1;transform:translateY(0);}
+  .toast.error{background:var(--red);} .toast.success{background:var(--green);}
+
+  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(16,35,59,.55);z-index:300;align-items:center;justify-content:center;padding:20px;}
+  .modal-overlay.show{display:flex;}
+  .modal{background:#fff;border-radius:14px;max-width:440px;width:100%;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3);}
+  .modal-head{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--line);}
+  .modal-head h3{margin:0;font-size:15px;font-weight:800;}
+  .modal-close{border:none;background:var(--paper);width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:15px;color:var(--slate);}
+  .modal-body{padding:18px 20px;font-size:13.5px;line-height:1.6;color:var(--ink-soft);}
+  .modal-body b{color:var(--ink);}
+  .modal-body ul{padding-left:18px;margin:8px 0;}
+  .modal-body li{margin-bottom:6px;}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 16V6a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v10" stroke="#10233B" stroke-width="2" stroke-linecap="round"/><path d="M14 10h4l3 3v3h-7v-6Z" stroke="#10233B" stroke-width="2" stroke-linejoin="round"/><circle cx="7" cy="17.5" r="1.6" fill="#10233B"/><circle cx="17.5" cy="17.5" r="1.6" fill="#10233B"/></svg>
+    </div>
+    <div class="brand-text">
+      <div class="name">KARIM N TRUCKING LTD</div>
+      <div class="tag">Proof of Delivery</div>
+    </div>
+  </div>
+  <button class="topbar-btn" id="infoBtn">Where does this go?</button>
+</header>
+
+<div id="apiWarning">
+  Not connected yet. Open this HTML file, find <code>CONFIG.SCRIPT_URL</code> near the top, and paste in your Google Apps Script Web App URL (see SETUP-INSTRUCTIONS.md).
+</div>
+
+<main>
+  <div class="intro">
+    <h1 id="formTitle">Submit a POD</h1>
+    <p id="formSub">Fill in the delivery details and attach a photo of the signed proof of delivery. This gets emailed to dispatch automatically.</p>
+  </div>
+
+  <div class="mode-tabs">
+    <div class="mode-tab active" id="tabNew">New POD</div>
+    <div class="mode-tab" id="tabUpdate">Update an existing POD</div>
+  </div>
+
+  <div class="ticket" id="lookupBox" style="display:none;margin-bottom:16px;">
+    <div class="ticket-strip"></div>
+    <div class="ticket-body">
+      <div class="lookup-row">
+        <div class="field">
+          <label>Ticket #</label>
+          <input type="text" class="mono-field" id="lookupTicket" placeholder="e.g. KNT-260707-A1B2" autocomplete="off">
+        </div>
+      </div>
+      <button type="button" class="lookup-btn" id="lookupBtn" style="margin-top:10px;width:100%;padding:12px;">Load this POD</button>
+      <div class="lookup-note">This only pre-fills the form if the ticket was submitted from this same phone. On any device, you can still type the ticket number in below and resubmit — it'll be emailed as an update to the same ticket.</div>
+    </div>
+  </div>
+
+  <div class="ticket">
+    <div class="ticket-strip"></div>
+    <div class="ticket-body">
+      <form id="podForm" novalidate>
+        <input type="hidden" id="editingTicketNo" value="">
+
+        <div class="field" id="f_driver">
+          <label>Driver name <span class="req">*</span></label>
+          <input type="text" id="driverName" list="driversList" placeholder="Start typing your name" autocomplete="off">
+          <datalist id="driversList"></datalist>
+          <div class="err">Enter your name</div>
+        </div>
+
+        <div class="field" id="f_email">
+          <label>Driver email <span class="req">*</span></label>
+          <input type="email" id="driverEmail" placeholder="name@example.com" autocomplete="off">
+          <div class="err">Enter a valid email address</div>
+        </div>
+
+        <div class="two-col">
+          <div class="field" id="f_loadstart">
+            <label>Load start date <span class="req">*</span></label>
+            <input type="date" id="loadStartDate">
+            <div class="err">Select the load start date</div>
+          </div>
+          <div class="field" id="f_date">
+            <label>Delivery date <span class="req">*</span></label>
+            <input type="date" id="deliveryDate">
+            <div class="err">Select the delivery date</div>
+          </div>
+        </div>
+
+        <div class="field" id="f_load">
+          <label>TL # / Transplace Load # <span class="req">*</span></label>
+          <input type="text" class="mono-field" id="loadNumber" placeholder="e.g. 931052166" inputmode="numeric" maxlength="9" autocomplete="off">
+          <div class="err">Enter exactly 9 digits for the TL / Transplace load number</div>
+        </div>
+
+        <div class="field" id="f_bol">
+          <label>BOL / Waybill # <span class="req">*</span></label>
+          <input type="text" class="mono-field" id="bolNumber" placeholder="e.g. 085327203" autocomplete="off">
+          <div class="err">Enter the BOL / waybill number</div>
+        </div>
+
+        <div class="field" id="f_location">
+          <label>Delivery location(s) <span class="req">*</span></label>
+          <div id="locationRows">
+            <div class="location-row"><input type="text" class="location-input" placeholder="Customer name / city" autocomplete="off"></div>
+          </div>
+          <button type="button" class="add-location-btn" id="addLocationBtn">+ Add another location</button>
+          <div class="err">Enter at least one delivery location</div>
+        </div>
+
+        <div class="field" id="f_photo">
+          <label>Photo(s) of signed POD <span class="req">*</span></label>
+          <div class="photo-grid" id="photoGrid"></div>
+          <div class="photo-drop" id="photoAddTile">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 16.5V18a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-1.5M12 15V4m0 0L7.5 8.5M12 4l4.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <div class="ptext" id="photoAddText">Tap to take a photo or choose a file</div>
+            <div class="psub">The first photo goes in the main email. Extra photos get sent as quick follow-up emails, same ticket number.</div>
+          </div>
+          <input type="file" id="photoInput" accept="image/*" capture="environment" multiple style="display:none;">
+          <div class="err">Attach at least one photo of the POD</div>
+        </div>
+
+        <div class="field">
+          <label>Notes <span style="text-transform:none;font-weight:500;color:#A9AFAE;">(optional — damage, shortage, refusal, etc.)</span></label>
+          <textarea id="notes" placeholder="Anything dispatch should know"></textarea>
+        </div>
+
+        <div class="perforation"></div>
+
+        <button type="submit" class="submit-btn" id="submitBtn">Submit POD</button>
+        <div class="submit-progress" id="submitProgress"></div>
+        <button type="button" class="ghost-btn" id="cancelEditBtn" style="display:none;">Cancel update</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="recent">
+    <button class="recent-toggle" id="recentToggle">▾ My recent submissions (this phone)</button>
+    <div class="recent-list" id="recentList"></div>
+  </div>
+
+  <div class="confirm-wrap" id="confirmWrap">
+    <div class="confirm-card">
+      <div class="stamp" id="confirmStamp">✓ SUBMITTED</div>
+      <div class="confirm-ticket-no" id="confirmTicketNo"></div>
+      <div class="confirm-sub">Ticket number — save this to update this POD later. It's been emailed to dispatch.</div>
+      <div class="confirm-details" id="confirmDetails"></div>
+      <button class="again-btn" id="submitAnotherBtn">Submit another POD</button>
+    </div>
+  </div>
+</main>
+
+<div class="modal-overlay" id="infoOverlay">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Where does this data go?</h3>
+      <button class="modal-close" id="closeInfo">✕</button>
+    </div>
+    <div class="modal-body">
+      Every POD submitted here — details and photos — is written automatically to a <b>Google Sheet</b> that acts as dispatch's live dashboard. It's shared only with dispatch, not public.
+      <ul>
+        <li>Each row is one ticket. Photos are saved to a linked Google Drive folder, with clickable links right in the sheet.</li>
+        <li>To find a specific POD, use the Sheet's search or filter by <b>ticket number</b> or <b>driver name</b>.</li>
+        <li>If a driver updates a POD later, the existing row is updated in place and a <b>"Last Updated"</b> column shows when.</li>
+        <li>Ask dispatch for the Sheet link if you need to check on a submission.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="toast-host" id="toastHost"></div>
+
+<script>
+(function(){
+
+let drivers = {};
+let mode = 'new';
+let pendingPhotos = [];
+let history_ = [];
+
+const $ = (id) => document.getElementById(id);
+
+function toast(msg, kind){
+  const host = $('toastHost');
+  const el = document.createElement('div');
+  el.className = 'toast' + (kind ? ' '+kind : '');
+  el.textContent = msg;
+  host.appendChild(el);
+  requestAnimationFrame(()=>el.classList.add('show'));
+  setTimeout(()=>{ el.classList.remove('show'); setTimeout(()=>el.remove(), 300); }, 3800);
+}
+
+function apiConfigured(){
+  return CONFIG.SCRIPT_URL && CONFIG.SCRIPT_URL.indexOf('PASTE_YOUR') === -1 && CONFIG.SCRIPT_URL.indexOf('https://') === 0;
+}
+
+/* ============================================================
+   LOCAL DEVICE STORAGE (this phone only)
+   ============================================================ */
+function loadHistory(){
+  try{ history_ = JSON.parse(localStorage.getItem('knt_pod_history') || '[]'); }catch(e){ history_ = []; }
+}
+function saveHistoryEntry(entry){
+  history_.unshift(entry);
+  history_ = history_.slice(0, 20);
+  try{ localStorage.setItem('knt_pod_history', JSON.stringify(history_)); }catch(e){}
+}
+function loadDrivers(){
+  try{ drivers = JSON.parse(localStorage.getItem('knt_pod_drivers') || '{}'); }catch(e){ drivers = {}; }
+}
+function saveDriver(name, email){
+  drivers[name] = email;
+  try{ localStorage.setItem('knt_pod_drivers', JSON.stringify(drivers)); }catch(e){}
+}
+function rememberLastDriver(name, email){
+  try{ localStorage.setItem('knt_pod_last_name', name); localStorage.setItem('knt_pod_last_email', email); }catch(e){}
+}
+function recallLastDriver(){
+  try{ return { name: localStorage.getItem('knt_pod_last_name')||'', email: localStorage.getItem('knt_pod_last_email')||'' }; }
+  catch(e){ return {name:'',email:''}; }
+}
+
+/* ============================================================
+   HELPERS
+   ============================================================ */
+function todayStr(){
+  const d = new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function escapeHtml(s){
+  return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function generateTicketNo(dateStr){
+  const compact = dateStr.replace(/-/g,'').slice(2);
+  const rand = Math.random().toString(36).slice(2,6).toUpperCase();
+  return 'KNT-' + compact + '-' + rand;
+}
+function dataUrlToBlob(dataUrl){
+  const [meta, b64] = dataUrl.split(',');
+  const mime = meta.match(/:(.*?);/)[1];
+  const bytes = atob(b64);
+  const arr = new Uint8Array(bytes.length);
+  for(let i=0;i<bytes.length;i++) arr[i] = bytes.charCodeAt(i);
+  return new Blob([arr], {type: mime});
+}
+
+function compressImage(file, maxDim, quality){
+  return new Promise((resolve, reject)=>{
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = (e)=>{ img.src = e.target.result; };
+    reader.onerror = reject;
+    img.onload = ()=>{
+      let w = img.width, h = img.height;
+      if(w > h && w > maxDim){ h = Math.round(h * maxDim / w); w = maxDim; }
+      else if(h >= w && h > maxDim){ w = Math.round(w * maxDim / h); h = maxDim; }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0,0,w,h);
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function populateDriverDatalist(){
+  $('driversList').innerHTML = Object.keys(drivers).map(d=>`<option value="${escapeHtml(d)}">`).join('');
+}
+function autofillEmailForDriver(){
+  const name = $('driverName').value.trim();
+  const known = drivers[name];
+  if(known && !$('driverEmail').value.trim()) $('driverEmail').value = known;
+}
+
+/* ============================================================
+   LOCATIONS (multi)
+   ============================================================ */
+function getLocationValues(){
+  return Array.from(document.querySelectorAll('.location-input')).map(i=>i.value.trim()).filter(v=>v.length>0);
+}
+function setLocationValues(locs){
+  $('locationRows').innerHTML = '';
+  (locs && locs.length ? locs : ['']).forEach(v=>addLocationRow(v));
+}
+function addLocationRow(value){
+  const rows = $('locationRows');
+  const row = document.createElement('div');
+  row.className = 'location-row';
+  row.innerHTML = `<input type="text" class="location-input" placeholder="Customer name / city" autocomplete="off" value="${value ? escapeHtml(value) : ''}">
+    <button type="button" class="remove-location">✕</button>`;
+  rows.appendChild(row);
+  updateLocationRemoveButtons();
+  row.querySelector('.remove-location').addEventListener('click', ()=>{
+    row.remove();
+    if(document.querySelectorAll('.location-row').length===0) addLocationRow();
+    updateLocationRemoveButtons();
+  });
+}
+function updateLocationRemoveButtons(){
+  const rows = document.querySelectorAll('.location-row');
+  rows.forEach(row=>{
+    let btn = row.querySelector('.remove-location');
+    if(rows.length===1){ if(btn) btn.remove(); }
+    else if(!btn){
+      btn = document.createElement('button');
+      btn.type='button'; btn.className='remove-location'; btn.textContent='✕';
+      row.appendChild(btn);
+      btn.addEventListener('click', ()=>{
+        row.remove();
+        if(document.querySelectorAll('.location-row').length===0) addLocationRow();
+        updateLocationRemoveButtons();
+      });
+    }
+  });
+}
+
+/* ============================================================
+   PHOTOS (multi)
+   ============================================================ */
+async function handlePhotoFiles(fileList){
+  const files = Array.from(fileList || []).filter(f=>f.type.startsWith('image/'));
+  if(files.length === 0){ toast('Please choose an image file', 'error'); return; }
+  for(const file of files){
+    try{
+      const full = await compressImage(file, 1400, 0.72);
+      const thumb = await compressImage(file, 220, 0.6);
+      const sizeKb = Math.round(full.length * 0.75 / 1024);
+      pendingPhotos.push({ full, thumb, sizeKb });
+    }catch(e){
+      toast('Could not process one of the photos — try again', 'error');
+    }
+  }
+  renderPhotoPreview();
+  validatePhotoField();
+}
+function renderPhotoPreview(){
+  const grid = $('photoGrid');
+  grid.innerHTML = pendingPhotos.map((p,i)=>`
+    <div class="photo-tile">
+      ${i===0 ? '<div class="photo-tile-tag">MAIN</div>' : ''}
+      <img src="${p.thumb}" alt="POD photo ${i+1}">
+      <button type="button" class="photo-tile-remove" data-idx="${i}">✕</button>
+      <div class="photo-tile-size">${p.sizeKb}KB</div>
+    </div>`).join('');
+  grid.querySelectorAll('.photo-tile-remove').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      pendingPhotos.splice(Number(btn.getAttribute('data-idx')), 1);
+      renderPhotoPreview();
+      validatePhotoField();
+    });
+  });
+  $('photoAddText').textContent = pendingPhotos.length ? 'Tap to add another photo' : 'Tap to take a photo or choose a file';
+}
+function validatePhotoField(){
+  const ok = pendingPhotos.length > 0;
+  setFieldError('f_photo', !ok);
+  return ok;
+}
+
+/* ============================================================
+   MODE SWITCHING
+   ============================================================ */
+function setMode(newMode){
+  mode = newMode;
+  $('tabNew').classList.toggle('active', mode==='new');
+  $('tabUpdate').classList.toggle('active', mode==='update');
+  $('lookupBox').style.display = mode==='update' ? 'block' : 'none';
+  if(mode==='new') exitEditState();
+  else{
+    $('cancelEditBtn').style.display = 'block';
+    $('submitBtn').textContent = 'Submit update';
+    $('formTitle').textContent = 'Update a POD';
+    $('formSub').textContent = 'Enter the ticket number below (or load it if it was submitted from this phone), fix whatever needs correcting, then submit.';
+  }
+}
+function exitEditState(){
+  $('editingTicketNo').value = '';
+  $('cancelEditBtn').style.display = 'none';
+  $('submitBtn').textContent = 'Submit POD';
+  $('formTitle').textContent = 'Submit a POD';
+  $('formSub').textContent = 'Fill in the delivery details and attach a photo of the signed proof of delivery. This gets emailed to dispatch automatically.';
+}
+
+function fillEditForm(s){
+  $('editingTicketNo').value = s.ticketNo;
+  $('driverName').value = s.driverName;
+  $('driverEmail').value = s.driverEmail;
+  $('loadStartDate').value = s.loadStartDate;
+  $('deliveryDate').value = s.deliveryDate;
+  $('loadNumber').value = s.loadNumber;
+  $('bolNumber').value = s.bolNumber;
+  setLocationValues(s.locations);
+  $('notes').value = s.notes || '';
+  pendingPhotos = [];
+  renderPhotoPreview();
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+async function loadForEditFromHistory(ticketNo){
+  const s = history_.find(h=>h.ticketNo === ticketNo);
+  if(s){
+    fillEditForm(s);
+    toast('Loaded from this phone\'s history — edit and submit', 'success');
+    return;
+  }
+  // Not on this phone — try the dispatch sheet itself so updates work from any device.
+  if(apiConfigured()){
+    try{
+      toast('Looking up ' + ticketNo + '…');
+      const r = await lookupOnServer(ticketNo);
+      if(r.found){
+        fillEditForm(r.data);
+        toast('Loaded from the dispatch sheet — edit and submit', 'success');
+        return;
+      }
+    }catch(err){ /* fall through to manual-entry message below */ }
+  }
+  $('editingTicketNo').value = ticketNo;
+  toast('Not found — fill in the corrected details and submit; it will update ticket ' + ticketNo, 'success');
+}
+
+/* ============================================================
+   VALIDATION
+   ============================================================ */
+function setFieldError(fieldId, show){ $(fieldId).classList.toggle('invalid', show); }
+
+function validateForm(){
+  let ok = true;
+  const driverVal = $('driverName').value.trim();
+  const emailVal = $('driverEmail').value.trim();
+  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailVal);
+  const loadStartVal = $('loadStartDate').value;
+  const dateVal = $('deliveryDate').value;
+  const loadVal = $('loadNumber').value.trim();
+  const loadValOk = /^\d{9}$/.test(loadVal);
+  const bolVal = $('bolNumber').value.trim();
+  const locationsVal = getLocationValues();
+  const photosOk = validatePhotoField();
+
+  setFieldError('f_driver', !driverVal); if(!driverVal) ok=false;
+  setFieldError('f_email', !emailOk); if(!emailOk) ok=false;
+  setFieldError('f_loadstart', !loadStartVal); if(!loadStartVal) ok=false;
+  setFieldError('f_date', !dateVal); if(!dateVal) ok=false;
+  setFieldError('f_load', !loadValOk); if(!loadValOk) ok=false;
+  setFieldError('f_bol', !bolVal); if(!bolVal) ok=false;
+  setFieldError('f_location', locationsVal.length===0); if(locationsVal.length===0) ok=false;
+  if(!photosOk) ok=false;
+
+  return ok;
+}
+
+/* ============================================================
+   SUBMIT (Google Apps Script — writes to the dispatch Google Sheet
+   and saves photos to a linked Drive folder)
+   ============================================================ */
+async function sendToAppsScript(payload){
+  // Sent as text/plain to avoid a CORS preflight (Apps Script doesn't
+  // handle OPTIONS requests). doPost() on the script side still parses
+  // it as JSON via e.postData.contents.
+  const res = await fetch(CONFIG.SCRIPT_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(payload)
+  });
+  return res.json();
+}
+
+async function lookupOnServer(ticketNo){
+  const res = await fetch(CONFIG.SCRIPT_URL + '?action=lookup&ticket=' + encodeURIComponent(ticketNo));
+  return res.json();
+}
+
+async function submitPOD(e){
+  e.preventDefault();
+  if(!apiConfigured()){ toast('Not connected yet — paste your Apps Script Web App URL at the top of the file', 'error'); return; }
+  if(!validateForm()){ toast('Please fill in all required fields', 'error'); return; }
+
+  const btn = $('submitBtn');
+  const progress = $('submitProgress');
+  btn.disabled = true;
+
+  const isUpdate = mode === 'update';
+  const ticketNo = $('editingTicketNo').value || generateTicketNo($('deliveryDate').value);
+  const driverName = $('driverName').value.trim();
+  const driverEmail = $('driverEmail').value.trim();
+  const loadStartDate = $('loadStartDate').value;
+  const deliveryDate = $('deliveryDate').value;
+  const loadNumber = $('loadNumber').value.trim();
+  const bolNumber = $('bolNumber').value.trim();
+  const locations = getLocationValues();
+  const notes = $('notes').value.trim();
+
+  const payload = {
+    ticketNo,
+    type: isUpdate ? 'UPDATE' : 'NEW',
+    driverName,
+    driverEmail,
+    loadStartDate,
+    deliveryDate,
+    loadNumber,
+    bolNumber,
+    locations,
+    notes,
+    photos: pendingPhotos.map((p, i) => ({
+      name: ticketNo + '-' + (i + 1) + '.jpg',
+      base64: p.full.split(',')[1]
+    }))
+  };
+
+  try{
+    btn.textContent = isUpdate ? 'Sending update…' : 'Submitting…';
+    if(pendingPhotos.length > 1){
+      progress.style.display = 'block';
+      progress.textContent = `Uploading ${pendingPhotos.length} photos…`;
+    }
+    const r = await sendToAppsScript(payload);
+    if(!r.success) throw new Error(r.message || 'Server rejected the submission');
+
+    saveDriver(driverName, driverEmail);
+    rememberLastDriver(driverName, driverEmail);
+    saveHistoryEntry({ ticketNo, driverName, driverEmail, loadStartDate, deliveryDate, loadNumber, bolNumber, locations, notes, submittedAt: new Date().toISOString() });
+
+    showConfirmation({driverName, loadStartDate, deliveryDate, loadNumber, bolNumber, locations}, ticketNo, isUpdate);
+    toast(isUpdate ? 'Update saved to dispatch sheet' : 'POD saved to dispatch sheet', 'success');
+  }catch(err){
+    toast('Could not send — check your internet connection and try again', 'error');
+  }finally{
+    progress.style.display = 'none';
+    btn.disabled = false;
+    btn.textContent = isUpdate ? 'Submit update' : 'Submit POD';
+  }
+}
+
+function showConfirmation(payload, ticketNo, wasUpdate){
+  $('podForm').closest('.ticket').style.display = 'none';
+  $('lookupBox').style.display = 'none';
+  document.querySelector('.mode-tabs').style.display = 'none';
+  $('recentToggle').parentElement.style.display = 'none';
+  $('confirmStamp').textContent = wasUpdate ? '✓ UPDATE SENT' : '✓ SUBMITTED';
+  $('confirmTicketNo').textContent = ticketNo;
+  $('confirmDetails').innerHTML = `
+    <div><span>Driver</span><span>${escapeHtml(payload.driverName)}</span></div>
+    <div><span>Load start date</span><span>${payload.loadStartDate}</span></div>
+    <div><span>Delivery date</span><span>${payload.deliveryDate}</span></div>
+    <div><span>TL / Transplace #</span><span>${escapeHtml(payload.loadNumber)}</span></div>
+    <div><span>BOL #</span><span>${escapeHtml(payload.bolNumber)}</span></div>
+    <div><span>Location(s)</span><span>${escapeHtml(payload.locations.join(', '))}</span></div>
+  `;
+  $('confirmWrap').classList.add('show');
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function resetForm(){
+  $('podForm').reset();
+  pendingPhotos = [];
+  renderPhotoPreview();
+  $('deliveryDate').value = todayStr();
+  $('loadStartDate').value = '';
+  setLocationValues(['']);
+  exitEditState();
+  setMode('new');
+  ['f_driver','f_email','f_loadstart','f_date','f_load','f_bol','f_location','f_photo'].forEach(id=>setFieldError(id,false));
+  $('confirmWrap').classList.remove('show');
+  $('podForm').closest('.ticket').style.display = 'block';
+  document.querySelector('.mode-tabs').style.display = 'flex';
+  $('recentToggle').parentElement.style.display = 'block';
+
+  const recalled = recallLastDriver();
+  if(recalled.name){ $('driverName').value = recalled.name; $('driverEmail').value = recalled.email; }
+  renderRecent();
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+/* ============================================================
+   RECENT SUBMISSIONS — this phone's local history only
+   ============================================================ */
+function renderRecent(){
+  const list = $('recentList');
+  if(history_.length === 0){
+    list.innerHTML = `<div class="recent-note">No submissions yet from this phone.</div>`;
+    return;
+  }
+  list.innerHTML = history_.slice(0,8).map(s=>`
+    <div class="recent-item">
+      <div><span class="rt">${s.ticketNo}</span> <span class="rd">— ${escapeHtml(s.driverName)} · ${escapeHtml((s.locations||[]).join(', '))}</span></div>
+      <button data-ticket="${escapeHtml(s.ticketNo)}">Edit</button>
+    </div>`).join('') + `<div class="recent-note">This list only shows submissions made from this phone. It's a convenience shortcut — the real record is dispatch's email.</div>`;
+  list.querySelectorAll('button[data-ticket]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      setMode('update');
+      $('lookupTicket').value = btn.getAttribute('data-ticket');
+      loadForEditFromHistory(btn.getAttribute('data-ticket'));
+    });
+  });
+}
+
+/* ============================================================
+   EVENT WIRING
+   ============================================================ */
+function init(){
+  if(!apiConfigured()) $('apiWarning').style.display = 'block';
+
+  $('deliveryDate').value = todayStr();
+  renderPhotoPreview();
+
+  const recalled = recallLastDriver();
+  if(recalled.name){ $('driverName').value = recalled.name; $('driverEmail').value = recalled.email; }
+
+  $('tabNew').addEventListener('click', ()=>setMode('new'));
+  $('tabUpdate').addEventListener('click', ()=>setMode('update'));
+  $('lookupBtn').addEventListener('click', ()=>{
+    const t = $('lookupTicket').value.trim();
+    if(!t){ toast('Enter the ticket number', 'error'); return; }
+    loadForEditFromHistory(t);
+  });
+  $('cancelEditBtn').addEventListener('click', ()=>resetForm());
+
+  $('photoAddTile').addEventListener('click', ()=>$('photoInput').click());
+  $('photoInput').addEventListener('change', (e)=>{ handlePhotoFiles(e.target.files); e.target.value = ''; });
+
+  $('podForm').addEventListener('submit', submitPOD);
+  $('submitAnotherBtn').addEventListener('click', resetForm);
+  $('addLocationBtn').addEventListener('click', ()=>addLocationRow());
+  updateLocationRemoveButtons();
+
+  $('driverName').addEventListener('input', autofillEmailForDriver);
+  $('loadNumber').addEventListener('input', (e)=>{ e.target.value = e.target.value.replace(/\D/g,'').slice(0,9); });
+
+  $('recentToggle').addEventListener('click', ()=>{
+    const list = $('recentList');
+    const open = list.classList.toggle('open');
+    $('recentToggle').textContent = (open ? '▴' : '▾') + ' My recent submissions (this phone)';
+    if(open) renderRecent();
+  });
+
+  $('infoBtn').addEventListener('click', ()=>$('infoOverlay').classList.add('show'));
+  $('closeInfo').addEventListener('click', ()=>$('infoOverlay').classList.remove('show'));
+  $('infoOverlay').addEventListener('click', (e)=>{ if(e.target.id==='infoOverlay') $('infoOverlay').classList.remove('show'); });
+}
+
+function boot(){
+  loadHistory();
+  loadDrivers();
+  init();
+  populateDriverDatalist();
+}
+
+boot();
+})();
+</script>
+</body>
+</html>
