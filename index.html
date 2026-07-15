@@ -92,6 +92,27 @@
   .field.invalid .err{display:block;}
   .hint{font-size:11.5px;color:#8B9AAE;margin-top:5px;}
 
+  .ref-tabs{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;}
+  .ref-tab{position:relative;flex:1;min-width:70px;display:flex;align-items:center;justify-content:center;gap:5px;
+    border:1.5px solid var(--line-strong);background:#FCFBF8;border-radius:9px;padding:9px 6px;cursor:pointer;
+    font-size:13px;font-weight:700;color:var(--slate);transition:all .15s;user-select:none;}
+  .ref-tab.active{border-color:var(--route);background:var(--route);color:#fff;}
+  .ref-tab .ref-info{
+    width:15px;height:15px;border-radius:50%;background:rgba(91,91,122,.15);color:inherit;
+    font-size:10px;font-weight:800;font-style:italic;font-family:Georgia,serif;display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  }
+  .ref-tab.active .ref-info{background:rgba(255,255,255,.28);}
+  .ref-tooltip{
+    display:none;position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);
+    width:200px;background:var(--ink);color:#fff;font-size:11.5px;font-weight:500;line-height:1.5;
+    padding:9px 11px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.25);z-index:20;text-transform:none;letter-spacing:normal;
+  }
+  .ref-tooltip::after{content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);border:6px solid transparent;border-top-color:var(--ink);}
+  .ref-tooltip.show{display:block;}
+  @media (hover:hover){ .ref-info:hover + .ref-tooltip{display:block;} }
+  .ref-hint{font-size:11.5px;color:#8B9AAE;margin-top:5px;}
+  @media (max-width:360px){ .ref-tab{min-width:44%;} }
+
   .lookup-row{display:flex;gap:10px;}
   .lookup-row .field{flex:1;margin-bottom:0;}
   .lookup-btn{background:var(--ink);color:#fff;border:none;border-radius:9px;padding:0 18px;font-weight:700;font-size:13.5px;cursor:pointer;white-space:nowrap;}
@@ -194,7 +215,7 @@
 <main>
   <div class="intro">
     <h1 id="formTitle">Submit a POD</h1>
-    <p id="formSub">Fill in the delivery details and attach a photo of the signed proof of delivery. This gets emailed to dispatch automatically.</p>
+    <p id="formSub">Fill in the delivery details and attach a photo of the signed proof of delivery. This is saved straight to dispatch's Google Sheet.</p>
   </div>
 
   <div class="mode-tabs">
@@ -248,16 +269,33 @@
           </div>
         </div>
 
-        <div class="field" id="f_load">
-          <label>TL # / Transplace Load # <span class="req">*</span></label>
-          <input type="text" class="mono-field" id="loadNumber" placeholder="e.g. 931052166" inputmode="numeric" maxlength="9" autocomplete="off">
-          <div class="err">Enter exactly 9 digits for the TL / Transplace load number</div>
-        </div>
-
-        <div class="field" id="f_bol">
-          <label>BOL / Waybill # <span class="req">*</span></label>
-          <input type="text" class="mono-field" id="bolNumber" placeholder="e.g. 085327203" autocomplete="off">
-          <div class="err">Enter the BOL / waybill number</div>
+        <div class="field" id="f_refnum">
+          <label>Reference number <span class="req">*</span></label>
+          <div class="ref-tabs" id="refTabs">
+            <div class="ref-tab active" data-type="TL">
+              <span>TL#</span>
+              <span class="ref-info" tabindex="0">i</span>
+              <div class="ref-tooltip">TL# / Transplace Load No. — exactly 9 digits, must start with 9. Numbers only, no letters.</div>
+            </div>
+            <div class="ref-tab" data-type="BOL">
+              <span>BOL#</span>
+              <span class="ref-info" tabindex="0">i</span>
+              <div class="ref-tooltip">BOL / Waybill No. — exactly 9 digits, must start with 0. Numbers only, no letters.</div>
+            </div>
+            <div class="ref-tab" data-type="RM">
+              <span>RM#</span>
+              <span class="ref-info" tabindex="0">i</span>
+              <div class="ref-tooltip">RM# / Returning Material — the letter R followed by exactly 8 digits (e.g. R12345678).</div>
+            </div>
+            <div class="ref-tab" data-type="OTHER">
+              <span>Other</span>
+              <span class="ref-info" tabindex="0">i</span>
+              <div class="ref-tooltip">Use this if the shipment doesn't have a TL, BOL, or RM number — enter whatever reference you do have.</div>
+            </div>
+          </div>
+          <input type="text" class="mono-field" id="refNumber" placeholder="e.g. 931052166" inputmode="numeric" maxlength="9" autocomplete="off">
+          <div class="ref-hint" id="refHint">Must be exactly 9 digits, starting with 9. Numbers only.</div>
+          <div class="err" id="refNumberErr">Enter a valid TL / Transplace load number</div>
         </div>
 
         <div class="field" id="f_location">
@@ -312,7 +350,7 @@
     <div class="confirm-card">
       <div class="stamp" id="confirmStamp">✓ SUBMITTED</div>
       <div class="confirm-ticket-no" id="confirmTicketNo"></div>
-      <div class="confirm-sub">Ticket number — save this to update this POD later. It's been emailed to dispatch.</div>
+      <div class="confirm-sub">Ticket number — save this to update this POD later. It's been saved to dispatch's Google Sheet.</div>
       <div class="confirm-details" id="confirmDetails"></div>
       <button class="again-btn" id="submitAnotherBtn">Submit another POD</button>
     </div>
@@ -346,6 +384,15 @@ let drivers = {};
 let mode = 'new';
 let pendingPhotos = [];
 let history_ = [];
+let isSubmitting = false;
+
+const REF_TYPE_CONFIG = {
+  TL:    { sheetLabel:'TL / Transplace #',  hint:'Must be exactly 9 digits, starting with 9. Numbers only.',              placeholder:'e.g. 931052166', pattern:/^9\d{8}$/, maxLength:9,  numeric:true,  err:'Enter a valid TL / Transplace load number — 9 digits, starting with 9' },
+  BOL:   { sheetLabel:'BOL / Waybill #',    hint:'Must be exactly 9 digits, starting with 0. Numbers only.',              placeholder:'e.g. 085327203', pattern:/^0\d{8}$/, maxLength:9,  numeric:true,  err:'Enter a valid BOL / waybill number — 9 digits, starting with 0' },
+  RM:    { sheetLabel:'RM #',               hint:'Starts with R, followed by exactly 8 digits.',                          placeholder:'e.g. R12345678', pattern:/^R\d{8}$/, maxLength:9,  numeric:false, err:'Enter a valid RM number — R followed by 8 digits' },
+  OTHER: { sheetLabel:'Reference #',        hint:'Enter whatever reference number applies to this shipment.',             placeholder:'e.g. REF-4821', pattern:/^.{1,40}$/, maxLength:40, numeric:false, err:'Enter a reference number' }
+};
+let refType = 'TL';
 
 const $ = (id) => document.getElementById(id);
 
@@ -469,6 +516,36 @@ function autofillEmailForDriver(){
 }
 
 /* ============================================================
+   REFERENCE NUMBER (TL / BOL / RM / Other)
+   ============================================================ */
+function setRefType(type){
+  if(!REF_TYPE_CONFIG[type]) type = 'TL';
+  refType = type;
+  document.querySelectorAll('.ref-tab').forEach(t=>t.classList.toggle('active', t.getAttribute('data-type') === type));
+  const cfg = REF_TYPE_CONFIG[type];
+  const input = $('refNumber');
+  input.placeholder = cfg.placeholder;
+  input.maxLength = cfg.maxLength;
+  input.setAttribute('inputmode', cfg.numeric ? 'numeric' : 'text');
+  $('refHint').textContent = cfg.hint;
+  $('refNumberErr').textContent = cfg.err;
+  setFieldError('f_refnum', false);
+}
+
+function filterRefNumberInput(value){
+  if(refType === 'TL' || refType === 'BOL'){
+    return value.replace(/\D/g,'').slice(0,9);
+  }
+  if(refType === 'RM'){
+    let v = value.toUpperCase().replace(/[^0-9R]/g,'');
+    if(v.startsWith('R')) v = 'R' + v.slice(1).replace(/R/g,'');
+    else v = 'R' + v.replace(/R/g,'');
+    return v.slice(0,9);
+  }
+  return value.slice(0,40);
+}
+
+/* ============================================================
    LOCATIONS (multi)
    ============================================================ */
 function getLocationValues(){
@@ -580,7 +657,7 @@ function exitEditState(){
   $('cancelEditBtn').style.display = 'none';
   $('submitBtn').textContent = 'Submit POD';
   $('formTitle').textContent = 'Submit a POD';
-  $('formSub').textContent = 'Fill in the delivery details and attach a photo of the signed proof of delivery. This gets emailed to dispatch automatically.';
+  $('formSub').textContent = 'Fill in the delivery details and attach a photo of the signed proof of delivery. This is saved straight to dispatch\'s Google Sheet.';
 }
 
 function fillEditForm(s){
@@ -589,8 +666,8 @@ function fillEditForm(s){
   $('driverEmail').value = s.driverEmail;
   $('loadStartDate').value = s.loadStartDate;
   $('deliveryDate').value = s.deliveryDate;
-  $('loadNumber').value = s.loadNumber;
-  $('bolNumber').value = s.bolNumber;
+  setRefType(s.refType || (s.loadNumber ? 'TL' : 'OTHER'));
+  $('refNumber').value = s.refNumber || s.loadNumber || s.bolNumber || '';
   setLocationValues(s.locations);
   $('notes').value = s.notes || '';
   pendingPhotos = [];
@@ -633,9 +710,8 @@ function validateForm(){
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailVal);
   const loadStartVal = $('loadStartDate').value;
   const dateVal = $('deliveryDate').value;
-  const loadVal = $('loadNumber').value.trim();
-  const loadValOk = /^\d{9}$/.test(loadVal);
-  const bolVal = $('bolNumber').value.trim();
+  const refVal = $('refNumber').value.trim();
+  const refValOk = REF_TYPE_CONFIG[refType].pattern.test(refVal);
   const locationsVal = getLocationValues();
   const photosOk = validatePhotoField();
 
@@ -643,8 +719,7 @@ function validateForm(){
   setFieldError('f_email', !emailOk); if(!emailOk) ok=false;
   setFieldError('f_loadstart', !loadStartVal); if(!loadStartVal) ok=false;
   setFieldError('f_date', !dateVal); if(!dateVal) ok=false;
-  setFieldError('f_load', !loadValOk); if(!loadValOk) ok=false;
-  setFieldError('f_bol', !bolVal); if(!bolVal) ok=false;
+  setFieldError('f_refnum', !refValOk); if(!refValOk) ok=false;
   setFieldError('f_location', locationsVal.length===0); if(locationsVal.length===0) ok=false;
   if(!photosOk) ok=false;
 
@@ -697,9 +772,11 @@ async function lookupOnServer(ticketNo){
 
 async function submitPOD(e){
   e.preventDefault();
+  if(isSubmitting) return; // hard guard: ignore taps that land while a submission is already in flight
   if(!apiConfigured()){ toast('Not connected yet — paste your Apps Script Web App URL at the top of the file', 'error'); return; }
   if(!validateForm()){ toast('Please fill in all required fields', 'error'); return; }
 
+  isSubmitting = true;
   const btn = $('submitBtn');
   const progress = $('submitProgress');
   btn.disabled = true;
@@ -710,8 +787,7 @@ async function submitPOD(e){
   const driverEmail = $('driverEmail').value.trim();
   const loadStartDate = $('loadStartDate').value;
   const deliveryDate = $('deliveryDate').value;
-  const loadNumber = $('loadNumber').value.trim();
-  const bolNumber = $('bolNumber').value.trim();
+  const refNumber = $('refNumber').value.trim();
   const locations = getLocationValues();
   const notes = $('notes').value.trim();
 
@@ -722,8 +798,8 @@ async function submitPOD(e){
     driverEmail,
     loadStartDate,
     deliveryDate,
-    loadNumber,
-    bolNumber,
+    refType,
+    refNumber,
     locations,
     notes,
     photos: pendingPhotos.map((p, i) => ({
@@ -743,13 +819,14 @@ async function submitPOD(e){
 
     saveDriver(driverName, driverEmail);
     rememberLastDriver(driverName, driverEmail);
-    saveHistoryEntry({ ticketNo, driverName, driverEmail, loadStartDate, deliveryDate, loadNumber, bolNumber, locations, notes, submittedAt: new Date().toISOString() });
+    saveHistoryEntry({ ticketNo, driverName, driverEmail, loadStartDate, deliveryDate, refType, refNumber, locations, notes, submittedAt: new Date().toISOString() });
 
-    showConfirmation({driverName, loadStartDate, deliveryDate, loadNumber, bolNumber, locations}, ticketNo, isUpdate);
+    showConfirmation({driverName, loadStartDate, deliveryDate, refType, refNumber, locations}, ticketNo, isUpdate);
     toast(isUpdate ? 'Update saved to dispatch sheet' : 'POD saved to dispatch sheet', 'success');
   }catch(err){
     toast('Could not send: ' + (err && err.message ? err.message : 'unknown error') + ' — try again', 'error');
   }finally{
+    isSubmitting = false;
     progress.style.display = 'none';
     btn.disabled = false;
     btn.textContent = isUpdate ? 'Submit update' : 'Submit POD';
@@ -767,8 +844,7 @@ function showConfirmation(payload, ticketNo, wasUpdate){
     <div><span>Driver</span><span>${escapeHtml(payload.driverName)}</span></div>
     <div><span>Load start date</span><span>${payload.loadStartDate}</span></div>
     <div><span>Delivery date</span><span>${payload.deliveryDate}</span></div>
-    <div><span>TL / Transplace #</span><span>${escapeHtml(payload.loadNumber)}</span></div>
-    <div><span>BOL #</span><span>${escapeHtml(payload.bolNumber)}</span></div>
+    <div><span>${escapeHtml(REF_TYPE_CONFIG[payload.refType].sheetLabel)}</span><span>${escapeHtml(payload.refNumber)}</span></div>
     <div><span>Location(s)</span><span>${escapeHtml(payload.locations.join(', '))}</span></div>
   `;
   $('confirmWrap').classList.add('show');
@@ -782,9 +858,10 @@ function resetForm(){
   $('deliveryDate').value = todayStr();
   $('loadStartDate').value = '';
   setLocationValues(['']);
+  setRefType('TL');
   exitEditState();
   setMode('new');
-  ['f_driver','f_email','f_loadstart','f_date','f_load','f_bol','f_location','f_photo'].forEach(id=>setFieldError(id,false));
+  ['f_driver','f_email','f_loadstart','f_date','f_refnum','f_location','f_photo'].forEach(id=>setFieldError(id,false));
   $('confirmWrap').classList.remove('show');
   $('podForm').closest('.ticket').style.display = 'block';
   document.querySelector('.mode-tabs').style.display = 'flex';
@@ -809,7 +886,7 @@ function renderRecent(){
     <div class="recent-item">
       <div><span class="rt">${s.ticketNo}</span> <span class="rd">— ${escapeHtml(s.driverName)} · ${escapeHtml((s.locations||[]).join(', '))}</span></div>
       <button data-ticket="${escapeHtml(s.ticketNo)}">Edit</button>
-    </div>`).join('') + `<div class="recent-note">This list only shows submissions made from this phone. It's a convenience shortcut — the real record is dispatch's email.</div>`;
+    </div>`).join('') + `<div class="recent-note">This list only shows submissions made from this phone. It's a convenience shortcut — the real record is dispatch's Google Sheet.</div>`;
   list.querySelectorAll('button[data-ticket]').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       setMode('update');
@@ -832,6 +909,7 @@ function init(){
 
   $('deliveryDate').value = todayStr();
   renderPhotoPreview();
+  setRefType('TL');
 
   const recalled = recallLastDriver();
   if(recalled.name){ $('driverName').value = recalled.name; $('driverEmail').value = recalled.email; }
@@ -856,7 +934,26 @@ function init(){
   updateLocationRemoveButtons();
 
   $('driverName').addEventListener('input', autofillEmailForDriver);
-  $('loadNumber').addEventListener('input', (e)=>{ e.target.value = e.target.value.replace(/\D/g,'').slice(0,9); });
+  $('refNumber').addEventListener('input', (e)=>{ e.target.value = filterRefNumberInput(e.target.value); });
+
+  document.querySelectorAll('.ref-tab').forEach(tab=>{
+    tab.addEventListener('click', (e)=>{
+      if(e.target.classList.contains('ref-info')) return;
+      setRefType(tab.getAttribute('data-type'));
+    });
+  });
+  document.querySelectorAll('.ref-info').forEach(info=>{
+    info.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      const tip = info.nextElementSibling;
+      const wasShown = tip.classList.contains('show');
+      document.querySelectorAll('.ref-tooltip.show').forEach(t=>t.classList.remove('show'));
+      if(!wasShown) tip.classList.add('show');
+    });
+  });
+  document.addEventListener('click', ()=>{
+    document.querySelectorAll('.ref-tooltip.show').forEach(t=>t.classList.remove('show'));
+  });
 
   $('recentToggle').addEventListener('click', ()=>{
     const list = $('recentList');
