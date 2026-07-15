@@ -21,7 +21,7 @@
      private.
      ============================================================ */
   const CONFIG = {
-    SCRIPT_URL: 'PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE'
+    SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbwHlnqhGrXmBW0760zfVVsKXzWZvamlv6yxhpPbQGVTUlhJHWD8KA5ku9oCR3CrVlLO/exec'
   };
 </script>
 <style>
@@ -414,6 +414,30 @@ function dataUrlToBlob(dataUrl){
 }
 
 function compressImage(file, maxDim, quality){
+  // Preferred path: createImageBitmap respects EXIF orientation ("from-image")
+  // and is far more memory-efficient than the Image+canvas approach below —
+  // this matters a lot on iPhone, where a single photo can be 12–48 megapixels
+  // and older WebKit canvas paths can silently fail or produce sideways images.
+  if(window.createImageBitmap){
+    return createImageBitmap(file, { imageOrientation: 'from-image' })
+      .then(bitmap => {
+        let w = bitmap.width, h = bitmap.height;
+        if(w > h && w > maxDim){ h = Math.round(h * maxDim / w); w = maxDim; }
+        else if(h >= w && h > maxDim){ w = Math.round(w * maxDim / h); h = maxDim; }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#fff'; ctx.fillRect(0,0,w,h);
+        ctx.drawImage(bitmap, 0, 0, w, h);
+        bitmap.close && bitmap.close();
+        return canvas.toDataURL('image/jpeg', quality);
+      })
+      .catch(() => compressImageLegacy(file, maxDim, quality));
+  }
+  return compressImageLegacy(file, maxDim, quality);
+}
+
+function compressImageLegacy(file, maxDim, quality){
   return new Promise((resolve, reject)=>{
     const img = new Image();
     const reader = new FileReader();
@@ -489,8 +513,15 @@ function updateLocationRemoveButtons(){
 /* ============================================================
    PHOTOS (multi)
    ============================================================ */
+function looksLikeImage(file){
+  if(file.type && file.type.startsWith('image/')) return true;
+  // iPhone HEIC/HEIF files sometimes report an empty or unrecognized MIME
+  // type depending on iOS version — fall back to checking the extension so
+  // valid photos aren't silently rejected.
+  return /\.(jpe?g|png|heic|heif|gif|webp|bmp|tiff?)$/i.test(file.name || '');
+}
 async function handlePhotoFiles(fileList){
-  const files = Array.from(fileList || []).filter(f=>f.type.startsWith('image/'));
+  const files = Array.from(fileList || []).filter(looksLikeImage);
   if(files.length === 0){ toast('Please choose an image file', 'error'); return; }
   for(const file of files){
     try{
@@ -499,7 +530,7 @@ async function handlePhotoFiles(fileList){
       const sizeKb = Math.round(full.length * 0.75 / 1024);
       pendingPhotos.push({ full, thumb, sizeKb });
     }catch(e){
-      toast('Could not process one of the photos — try again', 'error');
+      toast('Could not process "' + (file.name || 'a photo') + '" — ' + (e && e.message ? e.message : 'try a different photo'), 'error');
     }
   }
   renderPhotoPreview();
@@ -624,21 +655,44 @@ function validateForm(){
    SUBMIT (Google Apps Script — writes to the dispatch Google Sheet
    and saves photos to a linked Drive folder)
    ============================================================ */
+async function fetchWithTimeout(url, options, timeoutMs){
+  const controller = new AbortController();
+  const timer = setTimeout(()=>controller.abort(), timeoutMs || 30000);
+  try{
+    const res = await fetch(url, Object.assign({}, options, { signal: controller.signal }));
+    clearTimeout(timer);
+    if(!res.ok){
+      throw new Error('Server returned an error (HTTP ' + res.status + ')');
+    }
+    const text = await res.text();
+    try{
+      return JSON.parse(text);
+    }catch(parseErr){
+      // Most common cause: the Apps Script deployment isn't set to
+      // "Who has access: Anyone", so Google returns an HTML sign-in page
+      // instead of JSON. Surface that clearly instead of a blank failure.
+      throw new Error('Unexpected response from the server — check the Apps Script deployment is set to "Anyone" access');
+    }
+  }catch(err){
+    clearTimeout(timer);
+    if(err.name === 'AbortError') throw new Error('Request timed out — check your connection and try again');
+    throw err;
+  }
+}
+
 async function sendToAppsScript(payload){
   // Sent as text/plain to avoid a CORS preflight (Apps Script doesn't
   // handle OPTIONS requests). doPost() on the script side still parses
   // it as JSON via e.postData.contents.
-  const res = await fetch(CONFIG.SCRIPT_URL, {
+  return fetchWithTimeout(CONFIG.SCRIPT_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify(payload)
-  });
-  return res.json();
+  }, 45000);
 }
 
 async function lookupOnServer(ticketNo){
-  const res = await fetch(CONFIG.SCRIPT_URL + '?action=lookup&ticket=' + encodeURIComponent(ticketNo));
-  return res.json();
+  return fetchWithTimeout(CONFIG.SCRIPT_URL + '?action=lookup&ticket=' + encodeURIComponent(ticketNo), {}, 15000);
 }
 
 async function submitPOD(e){
@@ -694,7 +748,7 @@ async function submitPOD(e){
     showConfirmation({driverName, loadStartDate, deliveryDate, loadNumber, bolNumber, locations}, ticketNo, isUpdate);
     toast(isUpdate ? 'Update saved to dispatch sheet' : 'POD saved to dispatch sheet', 'success');
   }catch(err){
-    toast('Could not send — check your internet connection and try again', 'error');
+    toast('Could not send: ' + (err && err.message ? err.message : 'unknown error') + ' — try again', 'error');
   }finally{
     progress.style.display = 'none';
     btn.disabled = false;
@@ -769,7 +823,12 @@ function renderRecent(){
    EVENT WIRING
    ============================================================ */
 function init(){
-  if(!apiConfigured()) $('apiWarning').style.display = 'block';
+  if(location.protocol === 'file:'){
+    $('apiWarning').innerHTML = 'This page is open as a local file. On iPhone, camera and submission usually will not work this way — it needs to be hosted at a real <code>https://</code> address (see SETUP-INSTRUCTIONS.md, Part 2) and opened from that link.';
+    $('apiWarning').style.display = 'block';
+  } else if(!apiConfigured()){
+    $('apiWarning').style.display = 'block';
+  }
 
   $('deliveryDate').value = todayStr();
   renderPhotoPreview();
