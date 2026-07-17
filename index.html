@@ -739,11 +739,15 @@ async function submitPOD(e){
       rememberLastDriver(driverName, driverEmail);
       saveHistoryEntry({ ticketNo, driverName, driverEmail, loadStartDate, deliveryDate, refType, refNumber, locations, notes, submittedAt: new Date().toISOString() });
       showConfirmation({driverName, loadStartDate, deliveryDate, refType, refNumber, locations}, ticketNo);
-      toast('POD saved and emailed to dispatch and you', 'success');
+      if(r.emailSent){
+        toast('POD saved and emailed to dispatch and you', 'success');
+      }else{
+        toast('POD saved to the sheet, but the email couldn\'t be sent — ask dispatch to check the Apps Script setup', 'error');
+      }
     }catch(uiErr){
       // Saved fine, but something in the local display broke — reset back
       // to a clean, usable form rather than leaving a half-drawn screen.
-      toast('POD was saved and emailed. Ready for the next one.', 'success');
+      toast('POD was saved. Ready for the next one.', 'success');
       try{ resetForm(); }catch(resetErr){ location.reload(); }
     }
   }catch(err){
