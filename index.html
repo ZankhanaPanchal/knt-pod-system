@@ -215,33 +215,13 @@
 <main>
   <div class="intro">
     <h1 id="formTitle">Submit a POD</h1>
-    <p id="formSub">Fill in the delivery details and attach a photo of the signed proof of delivery. This is saved straight to dispatch's Google Sheet.</p>
-  </div>
-
-  <div class="mode-tabs">
-    <div class="mode-tab active" id="tabNew">New POD</div>
-    <div class="mode-tab" id="tabUpdate">Update an existing POD</div>
-  </div>
-
-  <div class="ticket" id="lookupBox" style="display:none;margin-bottom:16px;">
-    <div class="ticket-strip"></div>
-    <div class="ticket-body">
-      <div class="lookup-row">
-        <div class="field">
-          <label>Ticket #</label>
-          <input type="text" class="mono-field" id="lookupTicket" placeholder="e.g. KNT-260707-A1B2" autocomplete="off">
-        </div>
-      </div>
-      <button type="button" class="lookup-btn" id="lookupBtn" style="margin-top:10px;width:100%;padding:12px;">Load this POD</button>
-      <div class="lookup-note">This only pre-fills the form if the ticket was submitted from this same phone. On any device, you can still type the ticket number in below and resubmit — it'll be emailed as an update to the same ticket.</div>
-    </div>
+    <p id="formSub">Fill in the delivery details and attach a photo of the signed proof of delivery. This is saved to dispatch's Google Sheet and emailed to both dispatch and you.</p>
   </div>
 
   <div class="ticket">
     <div class="ticket-strip"></div>
     <div class="ticket-body">
       <form id="podForm" novalidate>
-        <input type="hidden" id="editingTicketNo" value="">
 
         <div class="field" id="f_driver">
           <label>Driver name <span class="req">*</span></label>
@@ -336,7 +316,6 @@
 
         <button type="submit" class="submit-btn" id="submitBtn">Submit POD</button>
         <div class="submit-progress" id="submitProgress"></div>
-        <button type="button" class="ghost-btn" id="cancelEditBtn" style="display:none;">Cancel update</button>
       </form>
     </div>
   </div>
@@ -350,7 +329,7 @@
     <div class="confirm-card">
       <div class="stamp" id="confirmStamp">✓ SUBMITTED</div>
       <div class="confirm-ticket-no" id="confirmTicketNo"></div>
-      <div class="confirm-sub">Ticket number — save this to update this POD later. It's been saved to dispatch's Google Sheet.</div>
+      <div class="confirm-sub">Ticket number — for your records. A copy has been emailed to you and to dispatch, and saved to dispatch's Google Sheet.</div>
       <div class="confirm-details" id="confirmDetails"></div>
       <button class="again-btn" id="submitAnotherBtn">Submit another POD</button>
     </div>
@@ -364,12 +343,12 @@
       <button class="modal-close" id="closeInfo">✕</button>
     </div>
     <div class="modal-body">
-      Every POD submitted here — details and photos — is written straight to a <b>Google Sheet</b> that dispatch uses as their live dashboard. It's shared only with dispatch, never public.
+      Every POD submitted here — details and photos — is written straight to a <b>Google Sheet</b> that dispatch uses as their live dashboard, and an email copy is sent automatically.
       <ul>
         <li>Each ticket is one row: driver, dates, load numbers, locations, notes, and links to the photos.</li>
         <li>Photos are automatically converted to <b>JPG</b> and saved to a linked Google Drive folder — works the same whether you snap a new photo or choose one from your gallery.</li>
-        <li>To find or fix a POD, use <b>"Update an existing POD"</b> above with the ticket number — it works from any phone, not just the one you submitted from.</li>
-        <li>Ask dispatch for the Sheet link if you ever need to double-check a submission.</li>
+        <li><b>An email is sent to dispatch</b>, and <b>you're CC'd automatically</b> using the driver email you enter — so a copy stays with you too, in your own inbox.</li>
+        <li>To find a POD later, search your email for the ticket number, or ask dispatch for the Sheet link.</li>
       </ul>
     </div>
   </div>
@@ -381,7 +360,6 @@
 (function(){
 
 let drivers = {};
-let mode = 'new';
 let pendingPhotos = [];
 let history_ = [];
 let isSubmitting = false;
@@ -639,64 +617,6 @@ function validatePhotoField(){
 /* ============================================================
    MODE SWITCHING
    ============================================================ */
-function setMode(newMode){
-  mode = newMode;
-  $('tabNew').classList.toggle('active', mode==='new');
-  $('tabUpdate').classList.toggle('active', mode==='update');
-  $('lookupBox').style.display = mode==='update' ? 'block' : 'none';
-  if(mode==='new') exitEditState();
-  else{
-    $('cancelEditBtn').style.display = 'block';
-    $('submitBtn').textContent = 'Submit update';
-    $('formTitle').textContent = 'Update a POD';
-    $('formSub').textContent = 'Enter the ticket number below (or load it if it was submitted from this phone), fix whatever needs correcting, then submit.';
-  }
-}
-function exitEditState(){
-  $('editingTicketNo').value = '';
-  $('cancelEditBtn').style.display = 'none';
-  $('submitBtn').textContent = 'Submit POD';
-  $('formTitle').textContent = 'Submit a POD';
-  $('formSub').textContent = 'Fill in the delivery details and attach a photo of the signed proof of delivery. This is saved straight to dispatch\'s Google Sheet.';
-}
-
-function fillEditForm(s){
-  $('editingTicketNo').value = s.ticketNo;
-  $('driverName').value = s.driverName;
-  $('driverEmail').value = s.driverEmail;
-  $('loadStartDate').value = s.loadStartDate;
-  $('deliveryDate').value = s.deliveryDate;
-  setRefType(s.refType || (s.loadNumber ? 'TL' : 'OTHER'));
-  $('refNumber').value = s.refNumber || s.loadNumber || s.bolNumber || '';
-  setLocationValues(s.locations);
-  $('notes').value = s.notes || '';
-  pendingPhotos = [];
-  renderPhotoPreview();
-  window.scrollTo({top:0, behavior:'smooth'});
-}
-
-async function loadForEditFromHistory(ticketNo){
-  const s = history_.find(h=>h.ticketNo === ticketNo);
-  if(s){
-    fillEditForm(s);
-    toast('Loaded from this phone\'s history — edit and submit', 'success');
-    return;
-  }
-  // Not on this phone — try the dispatch sheet itself so updates work from any device.
-  if(apiConfigured()){
-    try{
-      toast('Looking up ' + ticketNo + '…');
-      const r = await lookupOnServer(ticketNo);
-      if(r.found){
-        fillEditForm(r.data);
-        toast('Loaded from the dispatch sheet — edit and submit', 'success');
-        return;
-      }
-    }catch(err){ /* fall through to manual-entry message below */ }
-  }
-  $('editingTicketNo').value = ticketNo;
-  toast('Not found — fill in the corrected details and submit; it will update ticket ' + ticketNo, 'success');
-}
 
 /* ============================================================
    VALIDATION
@@ -766,10 +686,6 @@ async function sendToAppsScript(payload){
   }, 45000);
 }
 
-async function lookupOnServer(ticketNo){
-  return fetchWithTimeout(CONFIG.SCRIPT_URL + '?action=lookup&ticket=' + encodeURIComponent(ticketNo), {}, 15000);
-}
-
 async function submitPOD(e){
   e.preventDefault();
   if(isSubmitting) return; // hard guard: ignore taps that land while a submission is already in flight
@@ -781,8 +697,7 @@ async function submitPOD(e){
   const progress = $('submitProgress');
   btn.disabled = true;
 
-  const isUpdate = mode === 'update';
-  const ticketNo = $('editingTicketNo').value || generateTicketNo($('deliveryDate').value);
+  const ticketNo = generateTicketNo($('deliveryDate').value);
   const driverName = $('driverName').value.trim();
   const driverEmail = $('driverEmail').value.trim();
   const loadStartDate = $('loadStartDate').value;
@@ -793,7 +708,6 @@ async function submitPOD(e){
 
   const payload = {
     ticketNo,
-    type: isUpdate ? 'UPDATE' : 'NEW',
     driverName,
     driverEmail,
     loadStartDate,
@@ -809,7 +723,7 @@ async function submitPOD(e){
   };
 
   try{
-    btn.textContent = isUpdate ? 'Sending update…' : 'Submitting…';
+    btn.textContent = 'Submitting…';
     if(pendingPhotos.length > 1){
       progress.style.display = 'block';
       progress.textContent = `Uploading ${pendingPhotos.length} photos…`;
@@ -817,28 +731,35 @@ async function submitPOD(e){
     const r = await sendToAppsScript(payload);
     if(!r.success) throw new Error(r.message || 'Server rejected the submission');
 
-    saveDriver(driverName, driverEmail);
-    rememberLastDriver(driverName, driverEmail);
-    saveHistoryEntry({ ticketNo, driverName, driverEmail, loadStartDate, deliveryDate, refType, refNumber, locations, notes, submittedAt: new Date().toISOString() });
-
-    showConfirmation({driverName, loadStartDate, deliveryDate, refType, refNumber, locations}, ticketNo, isUpdate);
-    toast(isUpdate ? 'Update saved to dispatch sheet' : 'POD saved to dispatch sheet', 'success');
+    // The submission itself succeeded at this point. Everything below is
+    // just local UI bookkeeping — if any of it throws, it must NOT be
+    // reported as a failed send, and it must NOT leave the page stuck.
+    try{
+      saveDriver(driverName, driverEmail);
+      rememberLastDriver(driverName, driverEmail);
+      saveHistoryEntry({ ticketNo, driverName, driverEmail, loadStartDate, deliveryDate, refType, refNumber, locations, notes, submittedAt: new Date().toISOString() });
+      showConfirmation({driverName, loadStartDate, deliveryDate, refType, refNumber, locations}, ticketNo);
+      toast('POD saved and emailed to dispatch and you', 'success');
+    }catch(uiErr){
+      // Saved fine, but something in the local display broke — reset back
+      // to a clean, usable form rather than leaving a half-drawn screen.
+      toast('POD was saved and emailed. Ready for the next one.', 'success');
+      try{ resetForm(); }catch(resetErr){ location.reload(); }
+    }
   }catch(err){
     toast('Could not send: ' + (err && err.message ? err.message : 'unknown error') + ' — try again', 'error');
   }finally{
     isSubmitting = false;
     progress.style.display = 'none';
     btn.disabled = false;
-    btn.textContent = isUpdate ? 'Submit update' : 'Submit POD';
+    btn.textContent = 'Submit POD';
   }
 }
 
-function showConfirmation(payload, ticketNo, wasUpdate){
+function showConfirmation(payload, ticketNo){
   $('podForm').closest('.ticket').style.display = 'none';
-  $('lookupBox').style.display = 'none';
-  document.querySelector('.mode-tabs').style.display = 'none';
   $('recentToggle').parentElement.style.display = 'none';
-  $('confirmStamp').textContent = wasUpdate ? '✓ UPDATE SENT' : '✓ SUBMITTED';
+  $('confirmStamp').textContent = '✓ SUBMITTED';
   $('confirmTicketNo').textContent = ticketNo;
   $('confirmDetails').innerHTML = `
     <div><span>Driver</span><span>${escapeHtml(payload.driverName)}</span></div>
@@ -852,6 +773,7 @@ function showConfirmation(payload, ticketNo, wasUpdate){
 }
 
 function resetForm(){
+  isSubmitting = false;
   $('podForm').reset();
   pendingPhotos = [];
   renderPhotoPreview();
@@ -859,12 +781,9 @@ function resetForm(){
   $('loadStartDate').value = '';
   setLocationValues(['']);
   setRefType('TL');
-  exitEditState();
-  setMode('new');
   ['f_driver','f_email','f_loadstart','f_date','f_refnum','f_location','f_photo'].forEach(id=>setFieldError(id,false));
   $('confirmWrap').classList.remove('show');
   $('podForm').closest('.ticket').style.display = 'block';
-  document.querySelector('.mode-tabs').style.display = 'flex';
   $('recentToggle').parentElement.style.display = 'block';
 
   const recalled = recallLastDriver();
@@ -884,16 +803,8 @@ function renderRecent(){
   }
   list.innerHTML = history_.slice(0,8).map(s=>`
     <div class="recent-item">
-      <div><span class="rt">${s.ticketNo}</span> <span class="rd">— ${escapeHtml(s.driverName)} · ${escapeHtml((s.locations||[]).join(', '))}</span></div>
-      <button data-ticket="${escapeHtml(s.ticketNo)}">Edit</button>
-    </div>`).join('') + `<div class="recent-note">This list only shows submissions made from this phone. It's a convenience shortcut — the real record is dispatch's Google Sheet.</div>`;
-  list.querySelectorAll('button[data-ticket]').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      setMode('update');
-      $('lookupTicket').value = btn.getAttribute('data-ticket');
-      loadForEditFromHistory(btn.getAttribute('data-ticket'));
-    });
-  });
+      <span class="rt">${s.ticketNo}</span> <span class="rd">— ${escapeHtml(s.driverName)} · ${escapeHtml((s.locations||[]).join(', '))}</span>
+    </div>`).join('') + `<div class="recent-note">This list only shows submissions made from this phone. It's a convenience shortcut — the real record is dispatch's Google Sheet and your email.</div>`;
 }
 
 /* ============================================================
@@ -914,22 +825,13 @@ function init(){
   const recalled = recallLastDriver();
   if(recalled.name){ $('driverName').value = recalled.name; $('driverEmail').value = recalled.email; }
 
-  $('tabNew').addEventListener('click', ()=>setMode('new'));
-  $('tabUpdate').addEventListener('click', ()=>setMode('update'));
-  $('lookupBtn').addEventListener('click', ()=>{
-    const t = $('lookupTicket').value.trim();
-    if(!t){ toast('Enter the ticket number', 'error'); return; }
-    loadForEditFromHistory(t);
-  });
-  $('cancelEditBtn').addEventListener('click', ()=>resetForm());
-
   $('photoCameraTile').addEventListener('click', ()=>$('photoInputCamera').click());
   $('photoInputCamera').addEventListener('change', (e)=>{ handlePhotoFiles(e.target.files); e.target.value = ''; });
   $('photoGalleryTile').addEventListener('click', ()=>$('photoInputGallery').click());
   $('photoInputGallery').addEventListener('change', (e)=>{ handlePhotoFiles(e.target.files); e.target.value = ''; });
 
   $('podForm').addEventListener('submit', submitPOD);
-  $('submitAnotherBtn').addEventListener('click', resetForm);
+  $('submitAnotherBtn').addEventListener('click', ()=>{ try{ resetForm(); }catch(e){ location.reload(); } });
   $('addLocationBtn').addEventListener('click', ()=>addLocationRow());
   updateLocationRemoveButtons();
 
