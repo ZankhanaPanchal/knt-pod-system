@@ -25,7 +25,7 @@
  
 const SHEET_NAME = 'PODs';
 const FOLDER_NAME = 'Karim N Trucking PODs — Photos';
-const DISPATCH_EMAIL = 'karimpods@gmail.cm';
+const DISPATCH_EMAIL = 'karimpods@gmail.com';
  
 // ===================== ROUTES =====================
  function doGet(e) {
