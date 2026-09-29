@@ -550,12 +550,18 @@ function addRefNumberRow(value){
     <button type="button" class="remove-location">✕</button>`;
   rows.appendChild(row);
   row.querySelector('.ref-number-input').addEventListener('input', (e)=>{ e.target.value = filterRefNumberInput(e.target.value); });
+  // Attach the remove button's listener BEFORE updateRefNumberRemoveButtons() runs —
+  // that function deletes this exact button when this is the only row, so wiring
+  // it up first (while it still exists) avoids calling addEventListener on null.
+  const removeBtn = row.querySelector('.remove-location');
+  if(removeBtn){
+    removeBtn.addEventListener('click', ()=>{
+      row.remove();
+      if(document.querySelectorAll('.ref-number-row').length===0) addRefNumberRow();
+      updateRefNumberRemoveButtons();
+    });
+  }
   updateRefNumberRemoveButtons();
-  row.querySelector('.remove-location').addEventListener('click', ()=>{
-    row.remove();
-    if(document.querySelectorAll('.ref-number-row').length===0) addRefNumberRow();
-    updateRefNumberRemoveButtons();
-  });
 }
 function updateRefNumberRemoveButtons(){
   const rows = document.querySelectorAll('.ref-number-row');
@@ -592,12 +598,18 @@ function addLocationRow(value){
   row.innerHTML = `<input type="text" class="location-input" placeholder="Customer name / city" autocomplete="off" value="${value ? escapeHtml(value) : ''}">
     <button type="button" class="remove-location">✕</button>`;
   rows.appendChild(row);
+  // Same fix as addRefNumberRow: wire up the remove button before
+  // updateLocationRemoveButtons() has a chance to delete it (which it does
+  // whenever this ends up being the only row on the page).
+  const removeBtn = row.querySelector('.remove-location');
+  if(removeBtn){
+    removeBtn.addEventListener('click', ()=>{
+      row.remove();
+      if(document.querySelectorAll('.location-row').length===0) addLocationRow();
+      updateLocationRemoveButtons();
+    });
+  }
   updateLocationRemoveButtons();
-  row.querySelector('.remove-location').addEventListener('click', ()=>{
-    row.remove();
-    if(document.querySelectorAll('.location-row').length===0) addLocationRow();
-    updateLocationRemoveButtons();
-  });
 }
 function updateLocationRemoveButtons(){
   const rows = document.querySelectorAll('.location-row');
